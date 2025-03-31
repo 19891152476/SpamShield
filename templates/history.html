@@ -1,0 +1,199 @@
+{% extends 'base.html' %}
+
+{% block title %}历史记录 - 垃圾短信过滤系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <h1 class="page-title">检测历史记录</h1>
+        <p class="page-subtitle">查看系统检测过的短信记录及统计信息</p>
+
+        <!-- 统计卡片 -->
+        <div class="stats-grid mb-4">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_count }}</div>
+                <div class="stat-label">总检测数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value text-success">{{ normal_count }}</div>
+                <div class="stat-label">正常短信</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value text-danger">{{ spam_count }}</div>
+                <div class="stat-label">垃圾短信</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value text-primary">{{ spam_percentage|round(1) }}%</div>
+                <div class="stat-label">垃圾短信占比</div>
+            </div>
+        </div>
+
+        <!-- 搜索筛选 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-search me-2"></i>搜索与筛选
+                </h2>
+                
+                <form action="{{ url_for('history') }}" method="get" class="search-form">
+                    <div class="search-input">
+                        <input type="text" class="form-control" name="search" placeholder="搜索短信内容..." value="{{ search }}">
+                    </div>
+                    <div class="date-filters">
+                        <input type="date" class="form-control" name="start_date" placeholder="开始日期" value="{{ start_date }}">
+                        <input type="date" class="form-control" name="end_date" placeholder="结束日期" value="{{ end_date }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-2"></i>搜索
+                    </button>
+                    {% if search or start_date or end_date %}
+                    <a href="{{ url_for('history') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times me-2"></i>清除筛选
+                    </a>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+
+        <!-- 分布图表 -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="chart-container">
+                    <h3 class="chart-title">短信类型分布</h3>
+                    <div style="height: 300px;">
+                        <canvas id="history-distribution-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h3 class="card-title">检测结果解释</h3>
+                        <div class="mt-3">
+                            <p><i class="fas fa-check-circle text-success me-2"></i> <strong>正常短信:</strong> 系统认为这些短信是合法的，不包含垃圾信息。</p>
+                            <p><i class="fas fa-times-circle text-danger me-2"></i> <strong>垃圾短信:</strong> 系统检测到这些短信可能包含广告、诈骗或其他垃圾信息。</p>
+                            <p><strong>置信度:</strong> 表示系统对分类结果的确信程度，数值越高表示系统越确信其分类结果。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 检测历史列表 -->
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-history me-2"></i>检测历史
+                </h2>
+                
+                {% if pagination.items %}
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50%">短信内容</th>
+                                <th>检测结果</th>
+                                <th>置信度</th>
+                                <th>检测时间</th>
+                                <th>来源</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for detection in pagination.items %}
+                            <tr>
+                                <td>
+                                    <div style="max-height: 100px; overflow-y: auto;">
+                                        {{ detection.message[:100] }}{% if detection.message|length > 100 %}...{% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if detection.is_spam %}
+                                    <span class="badge bg-danger">垃圾短信</span>
+                                    {% else %}
+                                    <span class="badge bg-success">正常短信</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ (detection.confidence * 100)|round(2) }}%</td>
+                                <td>{{ detection.detected_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    {% if detection.source == 'single' %}
+                                    <span class="badge bg-info">单条检测</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">批量检测</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- 分页 -->
+                {% if pagination.pages > 1 %}
+                <nav aria-label="Page navigation">
+                    <ul class="pagination justify-content-center">
+                        {% if pagination.has_prev %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('history', page=pagination.prev_num, search=search, start_date=start_date, end_date=end_date) }}">
+                                <i class="fas fa-chevron-left"></i>
+                            </a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link"><i class="fas fa-chevron-left"></i></span>
+                        </li>
+                        {% endif %}
+                        
+                        {% for page_num in range(max(1, pagination.page - 2), min(pagination.pages + 1, pagination.page + 3)) %}
+                        <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('history', page=page_num, search=search, start_date=start_date, end_date=end_date) }}">
+                                {{ page_num }}
+                            </a>
+                        </li>
+                        {% endfor %}
+                        
+                        {% if pagination.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('history', page=pagination.next_num, search=search, start_date=start_date, end_date=end_date) }}">
+                                <i class="fas fa-chevron-right"></i>
+                            </a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link"><i class="fas fa-chevron-right"></i></span>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+                
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-history"></i>
+                    </div>
+                    <div class="empty-state-message">暂无检测历史记录</div>
+                    <div class="empty-state-description">
+                        {% if search or start_date or end_date %}
+                        没有找到符合条件的检测记录，请尝试调整搜索条件
+                        {% else %}
+                        使用系统检测短信后，记录将显示在这里
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 创建分布饼图
+    createHistoryDistributionChart({{ spam_count }}, {{ normal_count }});
+});
+</script>
+{% endblock %}

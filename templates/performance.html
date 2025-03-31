@@ -1,0 +1,330 @@
+{% extends 'base.html' %}
+
+{% block title %}模型性能 - 垃圾短信过滤系统{% endblock %}
+
+{% block head %}
+<!-- 添加Chart.js Matrix插件 -->
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@1.1.1/dist/chartjs-chart-matrix.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <h1 class="page-title">模型性能分析</h1>
+        <p class="page-subtitle">查看和分析垃圾短信过滤模型的性能指标</p>
+        
+        {% if not selected_model %}
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>暂无可用模型!</strong> 请先训练或上传至少一个模型。
+            <div class="mt-2">
+                <a href="{{ url_for('model') }}" class="btn btn-sm btn-primary">训练模型</a>
+            </div>
+        </div>
+        {% else %}
+        
+        <!-- 模型选择器 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-exchange-alt me-2"></i>选择模型
+                </h2>
+                
+                <form action="{{ url_for('performance') }}" method="get">
+                    <div class="form-group">
+                        <select class="form-control" id="model-selector" name="model_id" onchange="this.form.submit()">
+                            {% for model in models %}
+                            <option value="{{ model.id }}" data-type="{{ model.model_type }}" {% if selected_model and selected_model.id == model.id %}selected{% endif %}>
+                                {{ model.name }} (
+                                {% if model.model_type == 'naive_bayes' %}朴素贝叶斯
+                                {% elif model.model_type == 'svm' %}支持向量机
+                                {% elif model.model_type == 'lstm' %}LSTM
+                                {% elif model.model_type == 'residual_lstm' %}残差注意力LSTM
+                                {% else %}{{ model.model_type }}{% endif %}
+                                )
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 性能指标卡片 -->
+        <div class="row mb-4">
+            {% set metrics = selected_model.get_metrics() %}
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value" id="accuracy-value">{{ (metrics.accuracy * 100)|round(2) }}%</div>
+                    <div class="stat-label">准确率 (Accuracy)</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value" id="precision-value">{{ (metrics.precision * 100)|round(2) }}%</div>
+                    <div class="stat-label">精确率 (Precision)</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value" id="recall-value">{{ (metrics.recall * 100)|round(2) }}%</div>
+                    <div class="stat-label">召回率 (Recall)</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-value" id="f1-value">{{ (metrics.f1 * 100)|round(2) }}%</div>
+                    <div class="stat-label">F1分数 (F1 Score)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 模型详情 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-info-circle me-2"></i>模型详情
+                </h2>
+                
+                <div class="table-responsive">
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <th style="width: 180px;">模型名称</th>
+                                <td>{{ selected_model.name }}</td>
+                            </tr>
+                            <tr>
+                                <th>模型类型</th>
+                                <td>
+                                    {% if selected_model.model_type == 'naive_bayes' %}
+                                    朴素贝叶斯 (Naive Bayes)
+                                    {% elif selected_model.model_type == 'svm' %}
+                                    支持向量机 (SVM)
+                                    {% elif selected_model.model_type == 'lstm' %}
+                                    长短期记忆网络 (LSTM)
+                                    {% elif selected_model.model_type == 'residual_lstm' %}
+                                    残差注意力LSTM (Residual Attention LSTM)
+                                    {% else %}
+                                    {{ selected_model.model_type }}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>训练数据集</th>
+                                <td>{{ selected_model.dataset.name }}</td>
+                            </tr>
+                            <tr>
+                                <th>训练集大小</th>
+                                <td>{{ selected_model.dataset.rows_count }} 条短信 (垃圾: {{ selected_model.dataset.spam_count }}, 正常: {{ selected_model.dataset.normal_count }})</td>
+                            </tr>
+                            <tr>
+                                <th>训练时间</th>
+                                <td>{{ selected_model.train_time|round(2) }} 秒</td>
+                            </tr>
+                            <tr>
+                                <th>创建时间</th>
+                                <td>{{ selected_model.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            </tr>
+                            <tr>
+                                <th>状态</th>
+                                <td>
+                                    {% if selected_model.is_active %}
+                                    <span class="badge bg-success">当前使用中</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">未激活</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 图表行 -->
+        <div class="row mb-4">
+            <!-- ROC曲线 -->
+            <div class="col-md-6">
+                <div class="chart-container">
+                    <h3 class="chart-title">ROC曲线</h3>
+                    <div style="height: 350px;">
+                        <canvas id="roc-chart"></canvas>
+                    </div>
+                    <div class="mt-3 small text-muted">
+                        <p>ROC曲线显示了模型在不同决策阈值下的真正例率和假正例率。曲线下面积(AUC)越大，模型性能越好。</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 混淆矩阵 -->
+            <div class="col-md-6">
+                <div class="chart-container">
+                    <h3 class="chart-title">混淆矩阵</h3>
+                    <div style="height: 350px;">
+                        <canvas id="confusion-matrix-chart"></canvas>
+                        <div id="confusion-matrix-fallback" style="display: none;"></div>
+                    </div>
+                    <div class="mt-3 small text-muted" id="confusion-matrix-description">
+                        <p>混淆矩阵显示了模型分类的详细情况，包括真正例(TP)、假正例(FP)、真负例(TN)和假负例(FN)。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- LSTM模型的训练历史 -->
+        {% if selected_model.model_type in ['lstm', 'residual_lstm'] and metrics.train_loss %}
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-chart-line me-2"></i>训练历史
+                </h2>
+                <div style="height: 400px;">
+                    <canvas id="training-history-chart"></canvas>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 性能解释 -->
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-lightbulb me-2"></i>性能指标解释
+                </h2>
+                
+                <h5 class="mt-3">准确率 (Accuracy)</h5>
+                <p>所有预测中正确预测的比例。计算公式: (TP + TN) / (TP + TN + FP + FN)，其中：</p>
+                <ul>
+                    <li>TP (真正例): 正确预测为垃圾短信的样本数量</li>
+                    <li>TN (真负例): 正确预测为正常短信的样本数量</li>
+                    <li>FP (假正例): 错误预测为垃圾短信的样本数量</li>
+                    <li>FN (假负例): 错误预测为正常短信的样本数量</li>
+                </ul>
+                
+                <h5 class="mt-3">精确率 (Precision)</h5>
+                <p>被预测为垃圾短信的样本中实际为垃圾短信的比例。计算公式: TP / (TP + FP)</p>
+                <p>精确率高表示模型很少将正常短信误判为垃圾短信。</p>
+                
+                <h5 class="mt-3">召回率 (Recall)</h5>
+                <p>实际为垃圾短信的样本中被正确预测的比例。计算公式: TP / (TP + FN)</p>
+                <p>召回率高表示模型能够找出大部分垃圾短信。</p>
+                
+                <h5 class="mt-3">F1 分数 (F1 Score)</h5>
+                <p>精确率和召回率的调和平均值。计算公式: 2 * (Precision * Recall) / (Precision + Recall)</p>
+                <p>F1分数在精确率和召回率之间取得平衡，是评估模型性能的综合指标。</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    {% if selected_model %}
+    // 初始化图表
+    initializeCharts({{ selected_model.id }});
+    
+    // 如果是LSTM模型，初始化训练历史图表
+    {% if selected_model.model_type in ['lstm', 'residual_lstm'] and selected_model.get_metrics().train_loss %}
+    const metrics = {{ selected_model.get_metrics()|tojson }};
+    initializeTrainingHistoryChart(metrics);
+    {% endif %}
+    {% endif %}
+});
+
+// 初始化训练历史图表
+function initializeTrainingHistoryChart(metrics) {
+    const ctx = document.getElementById('training-history-chart').getContext('2d');
+    
+    // 准备数据
+    const epochs = Array.from({length: metrics.train_loss.length}, (_, i) => i + 1);
+    
+    // 创建图表
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: epochs,
+            datasets: [
+                {
+                    label: '训练损失',
+                    data: metrics.train_loss,
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    fill: true
+                },
+                {
+                    label: '验证损失',
+                    data: metrics.val_loss,
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                    fill: true
+                },
+                {
+                    label: '训练准确率',
+                    data: metrics.train_acc,
+                    borderColor: 'rgba(255, 159, 64, 1)',
+                    backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                    fill: true,
+                    yAxisID: 'y1'
+                },
+                {
+                    label: '验证准确率',
+                    data: metrics.val_acc,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    fill: true,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: '训练历史'
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                },
+                legend: {
+                    position: 'top',
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: '轮次 (Epoch)'
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: '损失'
+                    },
+                    position: 'left',
+                },
+                y1: {
+                    title: {
+                        display: true,
+                        text: '准确率'
+                    },
+                    position: 'right',
+                    min: 0,
+                    max: 1,
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            }
+        }
+    });
+}
+</script>
+{% endblock %}

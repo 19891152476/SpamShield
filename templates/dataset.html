@@ -1,0 +1,208 @@
+{% extends 'base.html' %}
+
+{% block title %}数据集管理 - 垃圾短信过滤系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <h1 class="page-title">数据集管理</h1>
+        <p class="page-subtitle">上传和管理用于训练垃圾短信过滤模型的数据集</p>
+
+        <!-- 上传新数据集 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-upload me-2"></i>上传新数据集
+                </h2>
+                <p class="card-subtitle">上传包含短信内容和标签的CSV文件用于模型训练</p>
+                
+                <div class="infobox mb-3">
+                    <div class="infobox-title">文件格式要求</div>
+                    <div class="infobox-content">
+                        <p>CSV文件必须包含以下列：</p>
+                        <ul>
+                            <li><code>text</code> (必填): 短信内容</li>
+                            <li><code>label</code> (必填): 标签，0表示正常短信，1表示垃圾短信</li>
+                            <li><code>send_freq</code> (可选): 发送频率</li>
+                            <li><code>is_night</code> (可选): 是否夜间发送</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <form action="{{ url_for('upload_dataset') }}" method="post" enctype="multipart/form-data" data-validate="true">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="name" class="form-label">数据集名称</label>
+                                <input type="text" class="form-control" id="name" name="name" placeholder="输入数据集名称" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="file" class="form-label">选择CSV文件</label>
+                                <input type="file" class="form-control" id="file" name="file" accept=".csv" required>
+                                <div id="file-name" class="form-text" style="display: none;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group mb-3">
+                        <label for="description" class="form-label">描述</label>
+                        <textarea class="form-control" id="description" name="description" rows="2" placeholder="输入数据集描述信息"></textarea>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-upload me-2"></i>上传数据集
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 数据集列表 -->
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-database me-2"></i>数据集列表
+                </h2>
+                <p class="card-subtitle">管理已上传的数据集</p>
+
+                {% if datasets %}
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>名称</th>
+                                <th>描述</th>
+                                <th>总短信数量</th>
+                                <th>垃圾/正常比例</th>
+                                <th>上传时间</th>
+                                <th>词云</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for dataset in datasets %}
+                            <tr>
+                                <td>{{ dataset.name }}</td>
+                                <td>{{ dataset.description or '无描述' }}</td>
+                                <td>{{ dataset.rows_count }}</td>
+                                <td>
+                                    <span class="badge bg-danger">垃圾: {{ dataset.spam_count }}</span>
+                                    <span class="badge bg-success">正常: {{ dataset.normal_count }}</span>
+                                </td>
+                                <td>{{ dataset.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="loadWordCloud({{ dataset.id }})">
+                                        <i class="fas fa-cloud me-1"></i>查看词云
+                                    </button>
+                                </td>
+                                <td>
+                                    <form id="delete-dataset-{{ dataset.id }}" action="{{ url_for('delete_dataset', dataset_id=dataset.id) }}" method="post" style="display: inline;">
+                                        <button type="button" class="btn btn-sm btn-danger" onclick="confirmDelete('确定要删除数据集 {{ dataset.name }} 吗？', 'delete-dataset-{{ dataset.id }}')">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-database"></i>
+                    </div>
+                    <div class="empty-state-message">暂无数据集</div>
+                    <div class="empty-state-description">上传一个数据集来开始训练垃圾短信过滤模型</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- 词云显示模态框 -->
+        <div class="modal fade" id="wordcloudModal" tabindex="-1" aria-labelledby="wordcloudModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="wordcloudModalLabel">垃圾短信词云</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="wordcloud-container" class="wordcloud-container">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 处理文件上传显示文件名
+    const fileInput = document.getElementById('file');
+    const fileNameDisplay = document.getElementById('file-name');
+    
+    if (fileInput && fileNameDisplay) {
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files.length > 0) {
+                fileNameDisplay.textContent = `已选择: ${fileInput.files[0].name}`;
+                fileNameDisplay.style.display = 'block';
+            } else {
+                fileNameDisplay.style.display = 'none';
+            }
+        });
+    }
+});
+
+// 加载并显示词云图
+function loadWordCloud(datasetId) {
+    // 显示模态框
+    const wordcloudModal = new bootstrap.Modal(document.getElementById('wordcloudModal'));
+    wordcloudModal.show();
+    
+    // 加载词云
+    fetch(`/get_wordcloud/${datasetId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('wordcloud-container').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <div class="empty-state-message">无法加载词云</div>
+                        <div class="empty-state-description">${data.error}</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            // 设置SVG内容
+            document.getElementById('wordcloud-container').innerHTML = data.svg;
+        })
+        .catch(error => {
+            console.error('加载词云出错:', error);
+            document.getElementById('wordcloud-container').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <div class="empty-state-message">加载词云时出错</div>
+                </div>
+            `;
+        });
+}
+
+// 确认删除
+function confirmDelete(message, formId) {
+    if (confirm(message)) {
+        document.getElementById(formId).submit();
+    }
+}
+</script>
+{% endblock %}

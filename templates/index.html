@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+
+{% block title %}首页 - 垃圾短信过滤系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <h1 class="page-title text-center mb-4">垃圾短信过滤检测</h1>
+        
+        <!-- 无模型警告 -->
+        {% if not active_model %}
+        <div class="alert alert-warning no-model-warning">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>未加载模型!</strong> 系统需要先训练或加载模型才能进行检测。
+            <div class="mt-2">
+                <a href="{{ url_for('dataset') }}" class="btn btn-sm btn-outline">上传数据集</a>
+                <a href="{{ url_for('model') }}" class="btn btn-sm btn-primary">训练模型</a>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 单条检测 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-search me-2"></i>单条短信检测
+                </h2>
+                <p class="card-subtitle text-muted">输入短信内容，使用当前模型进行检测</p>
+                
+                {% if active_model %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    当前使用模型: <strong>{{ active_model.name }}</strong> ({{ active_model.model_type }})
+                </div>
+                {% endif %}
+                
+                <form action="{{ url_for('detect') }}" method="post" data-validate="true">
+                    <div class="form-group mb-3">
+                        <label for="message" class="form-label">短信内容</label>
+                        <textarea class="form-control" id="message" name="message" rows="4" placeholder="请输入要检测的短信内容..." required {% if not active_model %}disabled{% endif %}></textarea>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary" {% if not active_model %}disabled{% endif %}>
+                            <i class="fas fa-filter me-2"></i>检测
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 批量检测 -->
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-file-alt me-2"></i>批量短信检测
+                </h2>
+                <p class="card-subtitle text-muted">上传CSV文件进行批量检测（文件必须包含'text'列）</p>
+                
+                <form action="{{ url_for('detect_batch') }}" method="post" enctype="multipart/form-data" data-validate="true">
+                    <div class="form-group mb-3">
+                        <label for="file" class="form-label">选择CSV文件</label>
+                        <input type="file" class="form-control" id="file" name="file" accept=".csv" required {% if not active_model %}disabled{% endif %}>
+                        <div id="file-name" class="form-text" style="display: none;"></div>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary" {% if not active_model %}disabled{% endif %}>
+                            <i class="fas fa-upload me-2"></i>上传并检测
+                        </button>
+                    </div>
+                </form>
+                
+                <!-- 批量检测结果 -->
+                {% if batch_result %}
+                <div class="batch-results mt-4">
+                    <h3 class="batch-title">批量检测结果</h3>
+                    <div class="batch-stats">
+                        <div class="batch-stat">
+                            <div class="batch-stat-value">{{ total_messages }}</div>
+                            <div class="batch-stat-label">总短信数量</div>
+                        </div>
+                        <div class="batch-stat">
+                            <div class="batch-stat-value text-success">{{ normal_count }}</div>
+                            <div class="batch-stat-label">正常短信</div>
+                        </div>
+                        <div class="batch-stat">
+                            <div class="batch-stat-value text-danger">{{ spam_count }}</div>
+                            <div class="batch-stat-label">垃圾短信</div>
+                        </div>
+                    </div>
+                    <div class="d-grid">
+                        <a href="{{ url_for('download_result', filename=result_path) }}" class="btn btn-success">
+                            <i class="fas fa-download me-2"></i>下载检测结果
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- 模型选择器 -->
+        {% if models and models|length > 0 %}
+        <div class="card mt-4">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-exchange-alt me-2"></i>切换模型
+                </h2>
+                <p class="card-subtitle text-muted">选择不同的模型进行短信检测</p>
+                
+                <form action="{{ url_for('activate_model', model_id=0) }}" method="post" id="activate-model-form">
+                    <input type="hidden" name="model_id" id="model_id" value="{{ active_model.id if active_model else '' }}">
+                    
+                    <div class="form-group mb-3">
+                        <label for="model-selector" class="form-label">选择模型</label>
+                        <select class="form-control" id="model-selector" onchange="document.getElementById('model_id').value=this.value; document.getElementById('activate-model-form').action='{{ url_for('activate_model', model_id='') }}' + this.value;">
+                            {% for model in models %}
+                            <option value="{{ model.id }}" data-type="{{ model.model_type }}" {% if active_model and active_model.id == model.id %}selected{% endif %}>
+                                {{ model.name }} ({{ model.model_type }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-check-circle me-2"></i>激活选中模型
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 处理文件上传显示文件名
+    const fileInput = document.getElementById('file');
+    const fileNameDisplay = document.getElementById('file-name');
+    
+    if (fileInput && fileNameDisplay) {
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files.length > 0) {
+                fileNameDisplay.textContent = `已选择: ${fileInput.files[0].name}`;
+                fileNameDisplay.style.display = 'block';
+            } else {
+                fileNameDisplay.style.display = 'none';
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

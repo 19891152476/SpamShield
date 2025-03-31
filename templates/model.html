@@ -1,0 +1,277 @@
+{% extends 'base.html' %}
+
+{% block title %}模型管理 - 垃圾短信过滤系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <h1 class="page-title">模型管理</h1>
+        <p class="page-subtitle">训练、保存和管理垃圾短信过滤模型</p>
+
+        <!-- 训练新模型 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-brain me-2"></i>训练新模型
+                </h2>
+                <p class="card-subtitle">选择数据集和算法类型，配置参数进行模型训练</p>
+                
+                {% if datasets %}
+                <form action="{{ url_for('train_model_route') }}" method="post" data-validate="true">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="model_name" class="form-label">模型名称</label>
+                                <input type="text" class="form-control" id="model_name" name="model_name" placeholder="输入模型名称" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="dataset_id" class="form-label">选择数据集</label>
+                                <select class="form-control" id="dataset_id" name="dataset_id" required>
+                                    <option value="" disabled selected>选择数据集</option>
+                                    {% for dataset in datasets %}
+                                    <option value="{{ dataset.id }}">{{ dataset.name }} ({{ dataset.rows_count }}条短信)</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group mb-3">
+                        <label for="model_type" class="form-label">模型类型</label>
+                        <select class="form-control" id="model_type" name="model_type" required>
+                            <option value="" disabled selected>选择模型类型</option>
+                            <option value="naive_bayes">朴素贝叶斯 (Naive Bayes)</option>
+                            <option value="svm">支持向量机 (SVM)</option>
+                            <option value="lstm">长短期记忆网络 (LSTM)</option>
+                            <option value="residual_lstm">残差注意力LSTM (Residual Attention LSTM)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="card bg-light mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title mb-2">模型说明</h5>
+                            <p id="model-description" class="mb-0">
+                                请选择一个模型类型查看说明。
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <h5 class="mb-3">训练参数</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="test_split" class="form-label">测试集比例</label>
+                                <input type="number" class="form-control" id="test_split" name="test_split" value="0.2" min="0.1" max="0.5" step="0.05">
+                                <div class="form-text">用于评估模型的数据比例 (0.1-0.5)</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="dl-params" style="display: none;">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group mb-3">
+                                    <label for="epochs" class="form-label">训练轮数 (Epochs)</label>
+                                    <input type="number" class="form-control" id="epochs" name="epochs" value="5" min="1" max="50">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group mb-3">
+                                    <label for="batch_size" class="form-label">批量大小 (Batch Size)</label>
+                                    <input type="number" class="form-control" id="batch_size" name="batch_size" value="32" min="8" max="128" step="8">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group mb-3">
+                                    <label for="learning_rate" class="form-label">学习率 (Learning Rate)</label>
+                                    <input type="number" class="form-control" id="learning_rate" name="learning_rate" value="0.001" min="0.0001" max="0.1" step="0.0001">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-play me-2"></i>开始训练
+                            <span class="spinner" style="display: none; width: 20px; height: 20px; margin-left: 10px;"></span>
+                        </button>
+                    </div>
+                </form>
+                {% else %}
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>暂无可用数据集!</strong> 请先上传数据集再进行模型训练。
+                    <div class="mt-2">
+                        <a href="{{ url_for('dataset') }}" class="btn btn-sm btn-primary">上传数据集</a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 模型列表 -->
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-list-alt me-2"></i>模型列表
+                </h2>
+                <p class="card-subtitle">管理已训练的模型</p>
+
+                {% if models %}
+                <div class="row">
+                    {% for model in models %}
+                    <div class="col-md-6">
+                        <div class="model-card {% if model.is_active %}active{% endif %} mb-3">
+                            <div class="model-header">
+                                <h5 class="model-title">{{ model.name }}</h5>
+                                <span class="model-type">
+                                    {% if model.model_type == 'naive_bayes' %}
+                                    朴素贝叶斯
+                                    {% elif model.model_type == 'svm' %}
+                                    支持向量机
+                                    {% elif model.model_type == 'lstm' %}
+                                    LSTM
+                                    {% elif model.model_type == 'residual_lstm' %}
+                                    残差注意力LSTM
+                                    {% else %}
+                                    {{ model.model_type }}
+                                    {% endif %}
+                                </span>
+                            </div>
+                            
+                            <div class="model-metrics">
+                                {% set metrics = model.get_metrics() %}
+                                <div class="metric">
+                                    <span class="metric-label">准确率:</span>
+                                    <span class="metric-value">{{ (metrics.accuracy * 100)|round(2) }}%</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">精确率:</span>
+                                    <span class="metric-value">{{ (metrics.precision * 100)|round(2) }}%</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">召回率:</span>
+                                    <span class="metric-value">{{ (metrics.recall * 100)|round(2) }}%</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">F1分数:</span>
+                                    <span class="metric-value">{{ (metrics.f1 * 100)|round(2) }}%</span>
+                                </div>
+                            </div>
+                            
+                            <div class="model-footer mt-2">
+                                <div class="text-muted mb-2">
+                                    <small>
+                                        <i class="fas fa-database me-1"></i>训练数据集: {{ model.dataset.name }}
+                                    </small>
+                                    <br>
+                                    <small>
+                                        <i class="fas fa-calendar-alt me-1"></i>训练时间: {{ model.created_at.strftime('%Y-%m-%d %H:%M') }}
+                                    </small>
+                                </div>
+                                
+                                <div class="model-actions">
+                                    {% if not model.is_active %}
+                                    <form action="{{ url_for('activate_model', model_id=model.id) }}" method="post" id="activate-form-{{ model.id }}">
+                                        <button type="submit" class="btn btn-sm btn-success">
+                                            <i class="fas fa-check-circle me-1"></i>激活
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <button class="btn btn-sm btn-outline-success" disabled>
+                                        <i class="fas fa-check-circle me-1"></i>当前使用中
+                                    </button>
+                                    {% endif %}
+                                    
+                                    <a href="{{ url_for('performance') }}?model_id={{ model.id }}" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-chart-line me-1"></i>性能详情
+                                    </a>
+                                    
+                                    <form id="delete-model-{{ model.id }}" action="{{ url_for('delete_model', model_id=model.id) }}" method="post" style="display: inline;">
+                                        <button type="button" class="btn btn-sm btn-danger" onclick="confirmDelete('确定要删除模型 {{ model.name }} 吗？', 'delete-model-{{ model.id }}')">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-brain"></i>
+                    </div>
+                    <div class="empty-state-message">暂无训练模型</div>
+                    <div class="empty-state-description">选择数据集和算法类型来训练垃圾短信过滤模型</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 模型类型选择交互
+    const modelTypeSelector = document.getElementById('model_type');
+    if (modelTypeSelector) {
+        modelTypeSelector.addEventListener('change', function() {
+            const selectedType = this.value;
+            
+            // 显示或隐藏深度学习特定参数
+            const dlParams = document.getElementById('dl-params');
+            if (dlParams) {
+                if (selectedType === 'lstm' || selectedType === 'residual_lstm') {
+                    dlParams.style.display = 'block';
+                } else {
+                    dlParams.style.display = 'none';
+                }
+            }
+            
+            // 更新模型说明
+            updateModelDescription(selectedType);
+        });
+    }
+});
+
+// 更新模型说明
+function updateModelDescription(modelType) {
+    const descriptionElement = document.getElementById('model-description');
+    if (!descriptionElement) return;
+    
+    let description = '';
+    
+    switch (modelType) {
+        case 'naive_bayes':
+            description = '朴素贝叶斯是一种基于贝叶斯定理的分类算法，适用于文本分类任务，训练速度快，性能较好。适合处理高维度特征空间。';
+            break;
+        case 'svm':
+            description = '支持向量机是一种强大的分类算法，通过寻找最佳分隔超平面来区分不同类别，适用于高维特征空间。对噪声具有较好的鲁棒性。';
+            break;
+        case 'lstm':
+            description = '长短期记忆网络是一种特殊的循环神经网络，能够捕捉序列数据中的长期依赖关系，适用于文本等序列数据。训练时间较长，但分类效果好。';
+            break;
+        case 'residual_lstm':
+            description = '残差注意力LSTM结合了残差连接和注意力机制，能够更好地捕捉中文短信中的上下文信息和重要特征，分类精度更高。是本系统的核心创新模型，尤其适合中文垃圾短信检测。';
+            break;
+        default:
+            description = '请选择一个模型类型。';
+    }
+    
+    descriptionElement.textContent = description;
+}
+
+// 确认删除
+function confirmDelete(message, formId) {
+    if (confirm(message)) {
+        document.getElementById(formId).submit();
+    }
+}
+</script>
+{% endblock %}
