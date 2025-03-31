@@ -1,12 +1,6 @@
 import os
 import pickle
-import numpy as np
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_curve, auc, confusion_matrix
-from preprocessing import preprocess_dataset, preprocess_text
+import sys
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,6 +8,41 @@ logger = logging.getLogger(__name__)
 # 标记TensorFlow是否可用
 tensorflow_available = False
 
+# 在NumPy导入前设置环境变量，避免NumPy 2.0+的兼容性问题
+os.environ["NUMPY_EXPERIMENTAL_ARRAY_FUNCTION"] = "0"
+
+# 尝试导入数据处理相关库
+try:
+    import numpy as np
+    import pandas as pd
+    from sklearn.model_selection import train_test_split
+    from sklearn.naive_bayes import MultinomialNB
+    from sklearn.svm import SVC
+    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_curve, auc, confusion_matrix
+    from preprocessing import preprocess_dataset, preprocess_text
+    logger.info("基础数据科学库导入成功")
+except ImportError as e:
+    logger.error(f"基础数据科学库导入失败: {str(e)}")
+    sys.exit(1)  # 基础库是必需的，没有它们系统无法运行
+
+# 定义全局变量以保存TensorFlow相关对象
+tf = None
+Tokenizer = None
+pad_sequences = None
+Sequential = None
+Model = None
+Dense = None
+LSTM = None
+Embedding = None
+Input = None
+Dropout = None
+Bidirectional = None 
+Add = None
+Multiply = None
+Activation = None
+Concatenate = None
+
+# 尝试导入TensorFlow (非必需)
 try:
     import tensorflow as tf
     from tensorflow.keras.preprocessing.text import Tokenizer
@@ -22,9 +51,10 @@ try:
     from tensorflow.keras.layers import Dense, LSTM, Embedding, Input, Dropout, Bidirectional, Add, Multiply, Activation, Concatenate
     tensorflow_available = True
     logger.info("TensorFlow 导入成功")
-except (ImportError, TypeError) as e:
+except Exception as e:
+    tensorflow_available = False
     logger.warning(f"TensorFlow 导入失败: {str(e)}")
-    logger.warning("深度学习模型将不可用，但SVM和朴素贝叶斯模型依然可用")
+    logger.warning("当前环境下深度学习模型将不可用，但系统将保留代码以便在支持CUDA的环境中使用")
 
 def train_model(dataset_path, model_type, output_path, params=None):
     """

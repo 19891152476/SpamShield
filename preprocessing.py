@@ -1,14 +1,27 @@
 import re
-import jieba
-import pandas as pd
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from collections import Counter
-import matplotlib.pyplot as plt
-from wordcloud import WordCloud
+import os
+import sys
 import logging
+from collections import Counter
+
+# 设置环境变量以解决NumPy 2.0+的兼容性问题
+os.environ["NUMPY_EXPERIMENTAL_ARRAY_FUNCTION"] = "0"
 
 logger = logging.getLogger(__name__)
+
+# 尝试导入数据处理库
+try:
+    import jieba
+    import pandas as pd
+    import numpy as np
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    import matplotlib.pyplot as plt
+    from wordcloud import WordCloud
+    logger.info("成功导入数据处理库")
+except ImportError as e:
+    logger.error(f"导入数据处理库失败: {str(e)}")
+    # 这些库是必需的，所以如果导入失败就需要退出
+    sys.exit(1)
 
 # 加载停用词
 def load_stopwords(file_path=None):
@@ -127,22 +140,38 @@ def create_word_cloud(texts, output_path=None, max_words=200, width=800, height=
     # 统计词频
     word_counts = Counter(all_words)
     
-    # 创建词云
-    font_path = 'static/fonts/simhei.ttf' if os.path.exists('static/fonts/simhei.ttf') else None
+    # 获取系统字体
+    font_path = get_system_font()
     
     try:
+        # 如果没有找到合适的字体，直接使用SVG生成方法
+        if font_path is None:
+            logger.warning("找不到合适的字体，使用SVG方式生成词云")
+            if output_path:
+                create_simple_svg_wordcloud(word_counts, max_words, output_path)
+            return None
+        
+        # 创建词云
+        logger.info(f"使用字体: {font_path} 创建词云")
         wordcloud = WordCloud(
             font_path=font_path,
             width=width, 
             height=height,
             max_words=max_words,
-            background_color='white'
+            background_color='white',
+            # 增加一些参数以提高中文显示效果
+            prefer_horizontal=0.9,
+            max_font_size=150,
+            min_font_size=10,
+            collocations=False,
+            random_state=42
         ).generate_from_frequencies(word_counts)
         
         if output_path:
-            plt.figure(figsize=(width/100, height/100))
+            plt.figure(figsize=(width/100, height/100), dpi=300)  # 提高DPI
             plt.imshow(wordcloud, interpolation='bilinear')
             plt.axis('off')
+            plt.tight_layout(pad=0)
             plt.savefig(output_path, format='svg', bbox_inches='tight')
             plt.close()
             return None
@@ -159,30 +188,78 @@ def create_simple_svg_wordcloud(word_counts, max_words, output_path):
     """创建简单的SVG词云"""
     # 选择频率最高的n个词
     top_words = dict(word_counts.most_common(max_words))
+    if not top_words:
+        logger.warning("词频统计为空，无法创建词云")
+        # 创建一个带有提示信息的空白SVG
+        svg = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="500" xmlns="http://www.w3.org/2000/svg">
+<rect width="800" height="500" fill="white"/>
+<text x="400" y="250" font-size="24" text-anchor="middle" fill="gray">暂无足够数据生成词云</text>
+</svg>'''
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(svg)
+        return
+    
     max_count = max(top_words.values())
     
     # SVG头部
     svg = f'''<?xml version="1.0" encoding="UTF-8"?>
 <svg width="800" height="500" xmlns="http://www.w3.org/2000/svg">
 <rect width="800" height="500" fill="white"/>
+<style>
+    text {{
+        font-family: "DejaVu Sans", "Noto Sans CJK SC", "SimHei", "Microsoft YaHei", sans-serif;
+    }}
+</style>
 '''
     
     # 随机放置词语
     import random
-    x, y = 50, 50
-    for word, count in top_words.items():
-        size = 10 + (count / max_count) * 40  # 根据词频确定字体大小
-        color = f"rgb({random.randint(0, 150)},{random.randint(0, 150)},{random.randint(100, 255)})"
-        
-        # 每行最多4个词
-        svg += f'<text x="{x}" y="{y}" font-size="{size}" fill="{color}">{word}</text>\n'
-        
-        x += 200
-        if x > 700:  # 换行
-            x = 50
-            y += 50
-        if y > 450:  # 防止超出边界
+    
+    # 使用更多的颜色
+    colors = [
+        "#4285F4", "#EA4335", "#FBBC05", "#34A853",  # Google colors
+        "#3498DB", "#E74C3C", "#2ECC71", "#F39C12",  # Flat UI colors
+        "#9B59B6", "#1ABC9C", "#E67E22", "#16A085",  # More colors
+        "#2980B9", "#D35400", "#27AE60", "#8E44AD",  # Even more colors
+    ]
+    
+    # 创建网格布局
+    grid_size = int(max_words ** 0.5) + 1  # 计算网格大小
+    cell_width = 800 // grid_size
+    cell_height = 500 // grid_size
+    
+    # 对词按频率排序
+    words_sorted = sorted(top_words.items(), key=lambda x: x[1], reverse=True)
+    
+    for i, (word, count) in enumerate(words_sorted):
+        if i >= max_words:
             break
+            
+        # 计算位置
+        row = i // grid_size
+        col = i % grid_size
+        
+        # 加入随机偏移使词云更自然
+        x_offset = random.randint(-10, 10)
+        y_offset = random.randint(-10, 10)
+        
+        x = col * cell_width + cell_width // 2 + x_offset
+        y = row * cell_height + cell_height // 2 + y_offset
+        
+        # 根据词频确定字体大小
+        size = 10 + (count / max_count) * 50
+        
+        # 颜色随机选择
+        color = random.choice(colors)
+        
+        # 随机旋转（但不要旋转太多，以保持可读性）
+        rotate = random.choice([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, -15]) 
+        
+        transform = f'transform="rotate({rotate} {x} {y})"' if rotate != 0 else ''
+        
+        # 确保显示在中心
+        svg += f'<text x="{x}" y="{y}" font-size="{size}" fill="{color}" text-anchor="middle" dominant-baseline="middle" {transform}>{word}</text>\n'
     
     # SVG尾部
     svg += '</svg>'
@@ -195,15 +272,26 @@ import os
 # 检查系统中文字体
 def get_system_font():
     """检查系统中文字体"""
+    # 首先检查我们是否有复制的字体
+    if os.path.exists('static/fonts/DejaVuSans.ttf'):
+        logger.info("使用复制的DejaVuSans字体")
+        return 'static/fonts/DejaVuSans.ttf'
+    
+    # 检查系统字体
     potential_fonts = [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',  # Linux DejaVu
+        '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',  # Noto CJK
         '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',  # Linux
         '/System/Library/Fonts/PingFang.ttc',  # macOS
         'C:/Windows/Fonts/simhei.ttf',  # Windows
         'C:/Windows/Fonts/msyh.ttf',  # Windows
+        '/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans.ttf'  # 默认matplotlib字体
     ]
     
     for font_path in potential_fonts:
         if os.path.exists(font_path):
+            logger.info(f"使用系统字体: {font_path}")
             return font_path
     
+    logger.warning("找不到合适的字体，将使用默认字体")
     return None
