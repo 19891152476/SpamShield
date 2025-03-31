@@ -424,3 +424,142 @@ function loadWordCloud(datasetId) {
             </div>`;
         });
 }
+// 初始化所有图表
+function initializeCharts(modelId) {
+    initializeROCChart(modelId);
+    initializeConfusionMatrix(modelId);
+}
+
+// 初始化ROC曲线
+function initializeROCChart(modelId) {
+    fetch(`/get_roc_data/${modelId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('获取ROC数据出错:', data.error);
+                return;
+            }
+
+            const ctx = document.getElementById('roc-chart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.fpr.map(x => x.toFixed(2)),
+                    datasets: [{
+                        label: 'ROC曲线',
+                        data: data.tpr,
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `ROC曲线 (AUC = ${data.auc.toFixed(3)})`
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: '假正例率 (FPR)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: '真正例率 (TPR)'
+                            }
+                        }
+                    }
+                }
+            });
+        })
+        .catch(error => console.error('获取ROC数据出错:', error));
+}
+
+// 初始化混淆矩阵
+function initializeConfusionMatrix(modelId) {
+    fetch(`/get_confusion_matrix/${modelId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('获取混淆矩阵数据出错:', data.error);
+                return;
+            }
+
+            const ctx = document.getElementById('confusion-matrix-chart').getContext('2d');
+            const matrix = data.matrix;
+            const total = matrix[0][0] + matrix[0][1] + matrix[1][0] + matrix[1][1];
+
+            new Chart(ctx, {
+                type: 'matrix',
+                data: {
+                    datasets: [{
+                        data: [
+                            { x: 0, y: 0, v: matrix[0][0] / total },
+                            { x: 1, y: 0, v: matrix[0][1] / total },
+                            { x: 0, y: 1, v: matrix[1][0] / total },
+                            { x: 1, y: 1, v: matrix[1][1] / total }
+                        ],
+                        width: ({ chart }) => (chart.chartArea || {}).width / 2 - 1,
+                        height: ({ chart }) => (chart.chartArea || {}).height / 2 - 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.dataset.data[context.dataIndex];
+                                    const count = matrix[value.y][value.x];
+                                    const percentage = (value.v * 100).toFixed(1);
+                                    return `数量: ${count} (${percentage}%)`;
+                                }
+                            }
+                        },
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                callback: function(value) {
+                                    return ['预测正常', '预测垃圾'][value];
+                                }
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                callback: function(value) {
+                                    return ['实际正常', '实际垃圾'][value];
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 更新混淆矩阵描述
+            const description = document.getElementById('confusion-matrix-description');
+            if (description) {
+                description.innerHTML = `
+                    <p>混淆矩阵显示了模型的分类详情：</p>
+                    <ul>
+                        <li>真负例 (TN): ${matrix[0][0]} 条</li>
+                        <li>假正例 (FP): ${matrix[0][1]} 条</li>
+                        <li>假负例 (FN): ${matrix[1][0]} 条</li>
+                        <li>真正例 (TP): ${matrix[1][1]} 条</li>
+                    </ul>
+                `;
+            }
+        })
+        .catch(error => console.error('获取混淆矩阵数据出错:', error));
+}
