@@ -1,5 +1,7 @@
 {pkgs}: {
   deps = [
+    pkgs.cudatoolkit
+    pkgs.cudnn
     pkgs.noto-fonts-cjk
     pkgs.glibcLocales
     pkgs.tk

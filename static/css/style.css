@@ -24,7 +24,7 @@ body {
 /* 容器 */
 .container {
     max-width: 1200px;
-    margin: 70px auto 0;  /* 增加顶部边距 */
+    margin: 90px auto 0;  /* 进一步增加顶部边距 */
     padding: 20px;
 }
 
