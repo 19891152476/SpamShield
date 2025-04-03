@@ -24,7 +24,7 @@ body {
 /* 容器 */
 .container {
     max-width: 1200px;
-    margin: 90px auto 0;  /* 进一步增加顶部边距 */
+    margin: 0 auto;
     padding: 20px;
 }
 
@@ -518,7 +518,7 @@ label {
     .table-responsive {
         overflow-x: auto;
     }
-
+    
     .stats-grid {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -528,11 +528,11 @@ label {
     .stats-grid {
         grid-template-columns: 1fr;
     }
-
+    
     .search-form {
         flex-direction: column;
     }
-
+    
     .date-filters {
         flex-direction: column;
     }

@@ -3,12 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC&display=swap" rel="stylesheet">
-    <style>
-        * {
-            font-family: 'Noto Sans SC', sans-serif;
-        }
-    </style>
     <title>{% block title %}垃圾短信过滤系统{% endblock %}</title>
     
     <!-- Bootstrap CSS -->
@@ -27,7 +21,7 @@
 </head>
 <body>
     <!-- 导航栏 -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">
                 <i class="fas fa-shield-alt text-success me-2"></i>垃圾短信过滤系统
@@ -68,7 +62,7 @@
     </nav>
     
     <!-- 主内容区 -->
-    <div class="container py-4" style="margin-top: 70px;">
+    <div class="container py-4">
         <!-- 消息提示 -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
